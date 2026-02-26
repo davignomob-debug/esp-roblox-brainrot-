@@ -1,135 +1,80 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
 
-local sg = Instance.new("ScreenGui", (gethui and gethui()) or game:GetService("CoreGui"))
-sg.Name = "BestBrainrot_ESP"
-sg.ResetOnSpawn = false
+-- // CONFIGURAÇÃO DO ESP
+local ESP_COLOR = Color3.fromRGB(0, 255, 127) -- Verde brilhante
+local ATUALIZAR_A_CADA = 2 -- Segundos para re-escanear o melhor do mapa
 
-local highlights = {}
-local labels = {}
+local function CriarTag(part, nome, valor)
+    -- Remove tags antigas para não sobrepor
+    if part:FindFirstChild("BestBrainrotTag") then part.BestBrainrotTag:Destroy() end
+    if part:FindFirstChild("BestHighlight") then part.BestHighlight:Destroy() end
 
--- converte texto de valor pra numero pra comparar
-local function ParseValor(texto)
-    if not texto then return 0 end
-    local s = texto:gsub("%$", ""):gsub(",", "")
-    local mult = 1
-    if s:find("B") then mult = 1e9 s = s:gsub("B","") end
-    if s:find("M") then mult = 1e6 s = s:gsub("M","") end
-    if s:find("K") then mult = 1e3 s = s:gsub("K","") end
-    return (tonumber(s) or 0) * mult
+    -- Criar o Texto Flutuante
+    local bbg = Instance.new("BillboardGui", part)
+    bbg.Name = "BestBrainrotTag"
+    bbg.Size = UDim2.new(0, 200, 0, 50)
+    bbg.Adornee = part
+    bbg.AlwaysOnTop = true
+    bbg.ExtentsOffset = Vector3.new(0, 3, 0)
+
+    local tl = Instance.new("TextLabel", bbg)
+    tl.Size = UDim2.new(1, 0, 1, 0)
+    tl.BackgroundTransparency = 1
+    tl.Text = "⭐ MELHOR: " .. nome .. "\n💰 " .. valor
+    tl.TextColor3 = ESP_COLOR
+    tl.TextStrokeTransparency = 0
+    tl.Font = Enum.Font.GothamBold
+    tl.TextSize = 14
+
+    -- Criar o Efeito de Brilho (Highlight)
+    local hl = Instance.new("Highlight", part)
+    hl.Name = "BestHighlight"
+    hl.FillColor = ESP_COLOR
+    hl.FillAlpha = 0.5
+    hl.OutlineColor = Color3.new(1, 1, 1)
 end
 
-local function LimparESP()
-    for _, h in pairs(highlights) do pcall(function() h:Destroy() end) end
-    for _, l in pairs(labels) do pcall(function() l:Destroy() end) end
-    highlights = {}
-    labels = {}
-end
+local function EscanearMelhorBrainrot()
+    local melhorValor = -1
+    local melhorObjeto = nil
+    local nomeDisplay = ""
 
-local function AtualizarESP()
-    LimparESP()
+    -- Varre as bases no Workspace (ajuste o caminho se o jogo mudar o local das bases)
+    for _, v in pairs(workspace:GetDescendants()) do
+        -- Procura por objetos que tenham o valor de $/s no nome ou em um atributo
+        -- Geralmente no 'Steal a Brainrot', o valor está no ProximityPrompt ou em uma StringValue
+        if v:IsA("TextLabel") or v:IsA("SurfaceGui") or v:IsA("BillboardGui") then
+            -- Tenta capturar o valor "$...M/s" ou "$.../s"
+            local texto = v:IsA("TextLabel") and v.Text or ""
+            local valorStr = texto:match("%$(%d+%.?%d*[KMB]?)/s")
+            
+            if valorStr then
+                -- Converte K, M, B para números reais para comparar
+                local num = tonumber(valorStr:match("%d+%.?%d*")) or 0
+                if valorStr:find("K") then num = num * 1000 
+                elseif valorStr:find("M") then num = num * 1000000 
+                elseif valorStr:find("B") then num = num * 1000000000 end
 
-    local melhorValor = 0
-    local melhorHandle = nil
-    local melhorTexto = ""
-    local melhorBase = ""
-
-    -- acha o melhor brainrot de todo server
-    local ok, bases = pcall(function() return workspace.Server.Bases:GetChildren() end)
-    if not ok then return end
-
-    for _, base in pairs(bases) do
-        local slots = base:FindFirstChild("Slots")
-        if not slots then continue end
-        for _, slot in pairs(slots:GetChildren()) do
-            local handle = slot:FindFirstChild("Handle")
-            local collect = slot:FindFirstChild("Collect")
-            if not handle or not collect then continue end
-            -- slot ocupado = sem PlacePrompt
-            if handle:FindFirstChild("PlacePrompt") then continue end
-            local valueLabel = collect:FindFirstChild("Value", true)
-            if not valueLabel then continue end
-            local valor = ParseValor(valueLabel.Text)
-            if valor > melhorValor then
-                melhorValor = valor
-                melhorHandle = handle
-                melhorTexto = valueLabel.Text .. "/s"
-                melhorBase = base.Name
+                if num > melhorValor then
+                    melhorValor = num
+                    melhorObjeto = v.Parent -- Pega a peça do item
+                    nomeDisplay = v.Parent.Name
+                end
             end
         end
     end
 
-    if not melhorHandle then return end
-
-    -- contorno amarelo no melhor brainrot
-    local highlight = Instance.new("SelectionBox")
-    highlight.Adornee = melhorHandle
-    highlight.Color3 = Color3.fromRGB(255, 215, 0)
-    highlight.LineThickness = 0.05
-    highlight.SurfaceTransparency = 0.7
-    highlight.SurfaceColor3 = Color3.fromRGB(255, 215, 0)
-    highlight.Parent = sg
-    table.insert(highlights, highlight)
-
-    -- label em cima mostrando valor
-    local bill = Instance.new("BillboardGui")
-    bill.Adornee = melhorHandle
-    bill.Size = UDim2.fromOffset(200, 50)
-    bill.StudsOffset = Vector3.new(0, 3, 0)
-    bill.AlwaysOnTop = true
-    bill.Parent = sg
-    table.insert(labels, bill)
-
-    local frame = Instance.new("Frame", bill)
-    frame.Size = UDim2.fromScale(1, 1)
-    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    frame.BackgroundTransparency = 0.4
-    frame.BorderSizePixel = 0
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
-
-    local txt = Instance.new("TextLabel", frame)
-    txt.Size = UDim2.fromScale(1, 0.55)
-    txt.Position = UDim2.fromScale(0, 0)
-    txt.Text = "🏆 MELHOR: " .. melhorTexto
-    txt.TextColor3 = Color3.fromRGB(255, 215, 0)
-    txt.BackgroundTransparency = 1
-    txt.Font = Enum.Font.GothamBold
-    txt.TextSize = 14
-    txt.TextScaled = true
-
-    local txt2 = Instance.new("TextLabel", frame)
-    txt2.Size = UDim2.fromScale(1, 0.45)
-    txt2.Position = UDim2.fromScale(0, 0.55)
-    txt2.Text = melhorBase
-    txt2.TextColor3 = Color3.fromRGB(200, 200, 200)
-    txt2.BackgroundTransparency = 1
-    txt2.Font = Enum.Font.Gotham
-    txt2.TextSize = 12
-    txt2.TextScaled = true
+    -- Aplica o ESP no campeão do servidor
+    if melhorObjeto and melhorObjeto:IsA("BasePart") then
+        CriarTag(melhorObjeto, nomeDisplay, "$" .. melhorValor .. "/s")
+    end
 end
 
--- atualiza a cada 3 segundos
-AtualizarESP()
+-- Loop de atualização automática
 task.spawn(function()
-    while sg and sg.Parent do
-        task.wait(3)
-        AtualizarESP()
+    while true do
+        EscanearMelhorBrainrot()
+        task.wait(ATUALIZAR_A_CADA)
     end
-end)
-
--- botao pra fechar
-local CloseBtn = Instance.new("TextButton", sg)
-CloseBtn.Size = UDim2.fromOffset(120, 30)
-CloseBtn.Position = UDim2.new(0, 10, 0, 10)
-CloseBtn.Text = "❌ Fechar ESP"
-CloseBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-CloseBtn.TextColor3 = Color3.new(1,1,1)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 13
-CloseBtn.BorderSizePixel = 0
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
-CloseBtn.MouseButton1Click:Connect(function()
-    LimparESP()
-    sg:Destroy()
 end)
