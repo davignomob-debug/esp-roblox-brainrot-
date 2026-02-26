@@ -1,124 +1,173 @@
--- Espera o jogo carregar para evitar erro de interface sumindo
-if not game:IsLoaded() then game.Loaded:Wait() end
-
 local Players = game:GetService("Players")
-local LP = Players.LocalPlayer
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
--- Tenta pegar o PlayerGui (mais garantido que apareça)
-local PlayerGui = LP:WaitForChild("PlayerGui")
-
--- Remove UI antiga se existir
-if PlayerGui:FindFirstChild("BestBrainrot_UI") then
-    PlayerGui.BestBrainrot_UI:Destroy()
-end
+local LocalPlayer = Players.LocalPlayer
 
 -- // INTERFACE PRINCIPAL
-local sg = Instance.new("ScreenGui", PlayerGui)
-sg.Name = "BestBrainrot_UI"
-sg.ResetOnSpawn = false -- Para a UI não sumir quando você morrer
+local sg = Instance.new("ScreenGui", (gethui and gethui()) or game:GetService("CoreGui"))
+sg.Name = "TechPerfect_ESP"
+sg.ResetOnSpawn = false
 
-local Main = Instance.new("Frame", sg)
-Main.Size = UDim2.fromOffset(160, 70)
-Main.Position = UDim2.new(0.5, -80, 0.2, 0) -- Um pouco mais para baixo
-Main.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true -- Ativa o arrastar nativo (mais simples)
+-- Botão Arrastável Principal
+local MainBtn = Instance.new("TextButton", sg)
+MainBtn.Size = UDim2.fromOffset(180, 45)
+MainBtn.Position = UDim2.new(0.5, -90, 0.1, 0)
+MainBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainBtn.Text = "BRAINROT ESP: OFF"
+MainBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MainBtn.Font = Enum.Font.GothamBold
+MainBtn.TextSize = 14
+MainBtn.AutoButtonColor = false
 
-local Corner = Instance.new("UICorner", Main)
-Corner.CornerRadius = UDim.new(0, 10)
+local Corner = Instance.new("UICorner", MainBtn)
+Corner.CornerRadius = UDim.new(0, 8)
 
-local Stroke = Instance.new("UIStroke", Main)
-Stroke.Color = Color3.fromRGB(0, 255, 150)
+local Stroke = Instance.new("UIStroke", MainBtn)
+Stroke.Color = Color3.fromRGB(255, 215, 0) -- Dourado
 Stroke.Thickness = 2
 
-local EspBtn = Instance.new("TextButton", Main)
-EspBtn.Size = UDim2.new(0.9, 0, 0, 40)
-EspBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
-EspBtn.Text = "ATIVAR ESP"
-EspBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-EspBtn.TextColor3 = Color3.new(1, 1, 1)
-EspBtn.Font = Enum.Font.GothamBold
-EspBtn.TextSize = 14
-Instance.new("UICorner", EspBtn)
-
--- // LÓGICA DO ESP
+-- // LÓGICA DO ESP (AJUSTADA)
+local highlights = {}
+local labels = {}
 local EspAtivo = false
 
-local function LimparTags()
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v.Name == "BestBrainrotTag" or v.Name == "BestHighlight" then
-            v:Destroy()
-        end
-    end
+local function ParseValor(texto)
+    if not texto then return 0 end
+    local s = texto:gsub("%%", ""):gsub("%$", ""):gsub(",", ""):gsub("/s", "")
+    local mult = 1
+    s = s:upper()
+    if s:find("B") then mult = 1e9 s = s:gsub("B","") end
+    if s:find("M") then mult = 1e6 s = s:gsub("M","") end
+    if s:find("K") then mult = 1e3 s = s:gsub("K","") end
+    return (tonumber(s) or 0) * mult
 end
 
-local function Escanear()
+local function LimparESP()
+    for _, h in pairs(highlights) do pcall(function() h:Destroy() end) end
+    for _, l in pairs(labels) do pcall(function() l:Destroy() end) end
+    highlights = {}
+    labels = {}
+end
+
+local function AtualizarESP()
+    LimparESP()
     if not EspAtivo then return end
-    local melhorValor = -1
-    local melhorObjeto = nil
-    local textoFinal = ""
 
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("TextLabel") and v.Text:find("%$") then
-            local t = v.Text
-            local valorStr = t:match("%$(%d+%.?%d*[KMB]?)/s")
+    local melhorValor = 0
+    local melhorHandle = nil
+    local melhorTexto = ""
+    local melhorBase = ""
+
+    local ok, bases = pcall(function() return workspace.Server.Bases:GetChildren() end)
+    if not ok then return end
+
+    for _, base in pairs(bases) do
+        local slots = base:FindFirstChild("Slots")
+        if not slots then continue end
+        for _, slot in pairs(slots:GetChildren()) do
+            local handle = slot:FindFirstChild("Handle")
+            local collect = slot:FindFirstChild("Collect")
+            if not handle or not collect then continue end
             
-            if valorStr then
-                local num = tonumber(valorStr:match("%d+%.?%d*")) or 0
-                if valorStr:find("K") then num = num * 1000 
-                elseif valorStr:find("M") then num = num * 1000000 
-                elseif valorStr:find("B") then num = num * 1000000000 end
-
-                if num > melhorValor then
-                    melhorValor = num
-                    melhorObjeto = v:FindFirstAncestorWhichIsA("BasePart") or v.Parent
-                    textoFinal = t
+            if handle:FindFirstChild("PlacePrompt") then continue end -- Slot vazio
+            
+            local valueLabel = collect:FindFirstChild("Value", true)
+            if valueLabel and valueLabel:IsA("TextLabel") then
+                local valor = ParseValor(valueLabel.Text)
+                if valor > melhorValor then
+                    melhorValor = valor
+                    melhorHandle = handle
+                    melhorTexto = valueLabel.Text
+                    melhorBase = base.Name
                 end
             end
         end
     end
 
-    LimparTags()
+    if melhorHandle then
+        -- Selection Box (Contorno)
+        local sb = Instance.new("SelectionBox")
+        sb.Adornee = melhorHandle
+        sb.Color3 = Color3.fromRGB(255, 215, 0)
+        sb.LineThickness = 0.04
+        sb.SurfaceTransparency = 0.8
+        sb.SurfaceColor3 = Color3.fromRGB(255, 215, 0)
+        sb.Parent = melhorHandle
+        table.insert(highlights, sb)
 
-    if melhorObjeto and melhorObjeto:IsA("BasePart") then
-        local hl = Instance.new("Highlight", melhorObjeto)
-        hl.Name = "BestHighlight"
-        hl.FillColor = Color3.fromRGB(0, 255, 150)
-        
-        local bbg = Instance.new("BillboardGui", melhorObjeto)
-        bbg.Name = "BestBrainrotTag"
-        bbg.Size = UDim2.new(0, 200, 0, 50)
-        bbg.AlwaysOnTop = true
-        bbg.ExtentsOffset = Vector3.new(0, 3, 0)
+        -- Tag Flutuante
+        local bill = Instance.new("BillboardGui")
+        bill.Adornee = melhorHandle
+        bill.Size = UDim2.fromOffset(180, 50)
+        bill.StudsOffset = Vector3.new(0, 4, 0)
+        bill.AlwaysOnTop = true
+        bill.Parent = melhorHandle
+        table.insert(labels, bill)
 
-        local tl = Instance.new("TextLabel", bbg)
-        tl.Size = UDim2.new(1, 0, 1, 0)
-        tl.BackgroundTransparency = 1
-        tl.Text = "⭐ MELHOR ITEM ⭐\n" .. textoFinal
-        tl.TextColor3 = Color3.fromRGB(0, 255, 150)
-        tl.Font = Enum.Font.GothamBold
-        tl.TextSize = 16
+        local f = Instance.new("Frame", bill)
+        f.Size = UDim2.fromScale(1, 1)
+        f.BackgroundColor3 = Color3.new(0,0,0)
+        f.BackgroundTransparency = 0.3
+        Instance.new("UICorner", f)
+
+        local t1 = Instance.new("TextLabel", f)
+        t1.Size = UDim2.fromScale(1, 0.6)
+        t1.Text = "⭐ MELHOR: " .. melhorTexto
+        t1.TextColor3 = Color3.new(1, 0.84, 0)
+        t1.Font = Enum.Font.GothamBold
+        t1.TextScaled = true
+        t1.BackgroundTransparency = 1
+
+        local t2 = Instance.new("TextLabel", f)
+        t2.Size = UDim2.fromScale(1, 0.4)
+        t2.Position = UDim2.fromScale(0, 0.55)
+        t2.Text = "Base: " .. melhorBase
+        t2.TextColor3 = Color3.new(1, 1, 1)
+        t2.Font = Enum.Font.Gotham
+        t2.TextScaled = true
+        t2.BackgroundTransparency = 1
     end
 end
 
-EspBtn.MouseButton1Click:Connect(function()
+-- Ativa/Desativa
+MainBtn.MouseButton1Click:Connect(function()
     EspAtivo = not EspAtivo
     if EspAtivo then
-        EspBtn.Text = "ESP: ON"
-        EspBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
-        task.spawn(function()
-            while EspAtivo do
-                Escanear()
-                task.wait(2)
-            end
-        end)
+        MainBtn.Text = "BRAINROT ESP: ON"
+        MainBtn.TextColor3 = Color3.fromRGB(0, 255, 150)
+        Stroke.Color = Color3.fromRGB(0, 255, 150)
     else
-        EspBtn.Text = "ATIVAR ESP"
-        EspBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        LimparTags()
+        MainBtn.Text = "BRAINROT ESP: OFF"
+        MainBtn.TextColor3 = Color3.new(1,1,1)
+        Stroke.Color = Color3.fromRGB(255, 215, 0)
+        LimparESP()
     end
 end)
 
-print("Script Carregado! Se não vir a UI, verifique se o Xeno injetou corretamente.")
+-- Loop de Atualização
+task.spawn(function()
+    while true do
+        if EspAtivo then AtualizarESP() end
+        task.wait(2.5)
+    end
+end)
+
+-- // SISTEMA DE ARRASTAR (DRAG)
+local dragging, dragInput, dragStart, startPos
+MainBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStart = input.Position; startPos = MainBtn.Position
+    end
+end)
+MainBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
