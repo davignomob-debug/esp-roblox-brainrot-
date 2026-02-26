@@ -1,56 +1,57 @@
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
 
--- // CONFIGURAÇÃO DO ESP
-local ESP_COLOR = Color3.fromRGB(0, 255, 127) -- Verde brilhante
-local ATUALIZAR_A_CADA = 2 -- Segundos para re-escanear o melhor do mapa
+-- // INTERFACE PRINCIPAL
+local sg = Instance.new("ScreenGui", (gethui and gethui()) or CoreGui)
+sg.Name = "BestBrainrot_UI"
 
-local function CriarTag(part, nome, valor)
-    -- Remove tags antigas para não sobrepor
-    if part:FindFirstChild("BestBrainrotTag") then part.BestBrainrotTag:Destroy() end
-    if part:FindFirstChild("BestHighlight") then part.BestHighlight:Destroy() end
+local Main = Instance.new("Frame", sg)
+Main.Size = UDim2.fromOffset(160, 70)
+Main.Position = UDim2.new(0.5, -80, 0.1, 0)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Main.BorderSizePixel = 0
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
 
-    -- Criar o Texto Flutuante
-    local bbg = Instance.new("BillboardGui", part)
-    bbg.Name = "BestBrainrotTag"
-    bbg.Size = UDim2.new(0, 200, 0, 50)
-    bbg.Adornee = part
-    bbg.AlwaysOnTop = true
-    bbg.ExtentsOffset = Vector3.new(0, 3, 0)
+local Stroke = Instance.new("UIStroke", Main)
+Stroke.Color = Color3.fromRGB(0, 255, 150)
+Stroke.Thickness = 2
 
-    local tl = Instance.new("TextLabel", bbg)
-    tl.Size = UDim2.new(1, 0, 1, 0)
-    tl.BackgroundTransparency = 1
-    tl.Text = "⭐ MELHOR: " .. nome .. "\n💰 " .. valor
-    tl.TextColor3 = ESP_COLOR
-    tl.TextStrokeTransparency = 0
-    tl.Font = Enum.Font.GothamBold
-    tl.TextSize = 14
+local EspBtn = Instance.new("TextButton", Main)
+EspBtn.Size = UDim2.new(0.9, 0, 0, 40)
+EspBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
+EspBtn.Text = "ATIVAR ESP"
+EspBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+EspBtn.TextColor3 = Color3.new(1, 1, 1)
+EspBtn.Font = Enum.Font.GothamBold
+EspBtn.TextSize = 14
+Instance.new("UICorner", EspBtn)
 
-    -- Criar o Efeito de Brilho (Highlight)
-    local hl = Instance.new("Highlight", part)
-    hl.Name = "BestHighlight"
-    hl.FillColor = ESP_COLOR
-    hl.FillAlpha = 0.5
-    hl.OutlineColor = Color3.new(1, 1, 1)
+-- // LÓGICA DO ESP (MELHOR BRAINROT)
+local EspAtivo = false
+
+local function LimparTags()
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v.Name == "BestBrainrotTag" or v.Name == "BestHighlight" then
+            v:Destroy()
+        end
+    end
 end
 
-local function EscanearMelhorBrainrot()
+local function Escanear()
+    if not EspAtivo then return end
+    
     local melhorValor = -1
     local melhorObjeto = nil
-    local nomeDisplay = ""
+    local textoFinal = ""
 
-    -- Varre as bases no Workspace (ajuste o caminho se o jogo mudar o local das bases)
     for _, v in pairs(workspace:GetDescendants()) do
-        -- Procura por objetos que tenham o valor de $/s no nome ou em um atributo
-        -- Geralmente no 'Steal a Brainrot', o valor está no ProximityPrompt ou em uma StringValue
-        if v:IsA("TextLabel") or v:IsA("SurfaceGui") or v:IsA("BillboardGui") then
-            -- Tenta capturar o valor "$...M/s" ou "$.../s"
-            local texto = v:IsA("TextLabel") and v.Text or ""
-            local valorStr = texto:match("%$(%d+%.?%d*[KMB]?)/s")
+        if v:IsA("TextLabel") then
+            local t = v.Text
+            local valorStr = t:match("%$(%d+%.?%d*[KMB]?)/s")
             
             if valorStr then
-                -- Converte K, M, B para números reais para comparar
                 local num = tonumber(valorStr:match("%d+%.?%d*")) or 0
                 if valorStr:find("K") then num = num * 1000 
                 elseif valorStr:find("M") then num = num * 1000000 
@@ -58,23 +59,61 @@ local function EscanearMelhorBrainrot()
 
                 if num > melhorValor then
                     melhorValor = num
-                    melhorObjeto = v.Parent -- Pega a peça do item
-                    nomeDisplay = v.Parent.Name
+                    melhorObjeto = v.Parent:IsA("BasePart") and v.Parent or v:FindFirstAncestorWhichIsA("BasePart")
+                    textoFinal = t
                 end
             end
         end
     end
 
-    -- Aplica o ESP no campeão do servidor
-    if melhorObjeto and melhorObjeto:IsA("BasePart") then
-        CriarTag(melhorObjeto, nomeDisplay, "$" .. melhorValor .. "/s")
+    LimparTags()
+
+    if melhorObjeto then
+        -- Criar Highlight
+        local hl = Instance.new("Highlight", melhorObjeto)
+        hl.Name = "BestHighlight"
+        hl.FillColor = Color3.fromRGB(0, 255, 150)
+        hl.FillAlpha = 0.4
+
+        -- Criar Texto
+        local bbg = Instance.new("BillboardGui", melhorObjeto)
+        bbg.Name = "BestBrainrotTag"
+        bbg.Size = UDim2.new(0, 200, 0, 50)
+        bbg.AlwaysOnTop = true
+        bbg.ExtentsOffset = Vector3.new(0, 3, 0)
+
+        local tl = Instance.new("TextLabel", bbg)
+        tl.Size = UDim2.new(1, 0, 1, 0)
+        tl.BackgroundTransparency = 1
+        tl.Text = "⭐ MELHOR ITEM ⭐\n" .. textoFinal
+        tl.TextColor3 = Color3.fromRGB(0, 255, 150)
+        tl.TextStrokeTransparency = 0
+        tl.Font = Enum.Font.GothamBold
+        tl.TextSize = 16
     end
 end
 
--- Loop de atualização automática
-task.spawn(function()
-    while true do
-        EscanearMelhorBrainrot()
-        task.wait(ATUALIZAR_A_CADA)
+EspBtn.MouseButton1Click:Connect(function()
+    EspAtivo = not EspAtivo
+    if EspAtivo then
+        EspBtn.Text = "ESP: ON"
+        EspBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 60)
+        -- Loop de atualização enquanto estiver ativo
+        task.spawn(function()
+            while EspAtivo do
+                Escanear()
+                task.wait(2)
+            end
+        end)
+    else
+        EspBtn.Text = "ATIVAR ESP"
+        EspBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        LimparTags()
     end
 end)
+
+-- // SISTEMA DE ARRASTAR (DRAG)
+local dragging, dragInput, dragStart, startPos
+Main.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; dragStart = input.Position; startPos = Main.Position end end)
+UserInputService.InputChanged:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then local delta = input.Position - dragStart; Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
